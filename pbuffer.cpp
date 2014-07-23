@@ -28,6 +28,8 @@
 
 #include <deque>
 #include <string>
+#include <algorithm>
+#include <cassert>
 
 #ifndef VERSION_STRING
 #define VERSION_STRING __DATE__ " " __TIME__
@@ -47,6 +49,7 @@ size_t max_queue = 0;
 size_t read_size = 65536;
 
 bool show_progress = false;
+bool human_readable = false;
 uint64_t total_read = 0;
 uint64_t read_count = 0;
 uint64_t write_count = 0;
@@ -184,13 +187,15 @@ void show_usage(FILE *f) {
 			"\n"
 			"-m, --max-queue bytes\n"
 			"\tMaximum amount of data to store.\n"
-			"\tAccepts suffixes: k, M, G, for multiples of 1024.\n"
+			"\tAccepts suffixes: k, M, G, T, for powers of 1024.\n"
 			"\tThis option is required unless using -h or -V.\n"
 			"-r, --read-size bytes\n"
 			"\tMaximum amount of data to read in one go.\n"
 			"\tAccepts suffixes: k, M, G, for multiples of 1024. Default: 64k.\n"
 			"-p, --progress\n"
 			"\tShow a progress line on STDERR.\n"
+			"-s, --human-readable\n"
+			"\tShow progress sizes in human-readable format (e.g. 1k, 23M).\n"
 			"-h, --help\n"
 			"\tShow this help\n"
 			"-V, --version\n"
@@ -207,6 +212,7 @@ bool parse_size(const char *input, size_t &output, const char *name) {
 	else if(end == std::string("k")) value <<= 10;
 	else if(end == std::string("M")) value <<= 20;
 	else if(end == std::string("G")) value <<= 30;
+	else if(end == std::string("T")) value <<= 40;
 	else {
 		fprintf(stderr, "Invalid %s: '%s'\n", name, input);
 		return false;
@@ -219,23 +225,64 @@ static struct option options[] = {
 	{ "max-queue",     required_argument,  nullptr, 'm' },
 	{ "read-size",     required_argument,  nullptr, 'r' },
 	{ "progress",      no_argument,        nullptr, 'p' },
+	{ "human-readable",no_argument,        nullptr, 's' },
 	{ "help",          no_argument,        nullptr, 'h' },
 	{ "version",       no_argument,        nullptr, 'V' },
 	{ nullptr, 0, nullptr, 0 },
 };
 
+char *humanise_size(double in, char *buffer, size_t length) {
+	if(length < 7) return nullptr;
+
+	const char *suffix = nullptr;
+	do {
+		if(in < 1024) {
+			snprintf(buffer, 6, "%5d", (int) in);
+			return buffer;
+		}
+		in /= 1024;
+		if(in < 1024) { suffix = "k"; break; }
+		in /= 1024;
+		if(in < 1024) { suffix = "M"; break; }
+		in /= 1024;
+		if(in < 1024) { suffix = "G"; break; }
+		in /= 1024;
+		if(in < 1024) { suffix = "T"; break; }
+		in /= 1024;
+		if(in < 1024) { suffix = "P"; break; }
+		in /= 1024;
+		suffix = "E"; break;
+	} while(false);
+	snprintf(buffer, 6, " %#4.4g", in);
+	if(buffer[4] == '.') buffer[4] = 0;
+	else buffer++;
+	strcat(buffer, suffix);
+	return buffer;
+}
+
 void print_progress_line() {
-	fprintf(stderr, "\rRead: %14llu, Buffer: %14zu %3d%% (%u), Reads: %14llu, Writes: %14llu",
-		(unsigned long long int) total_read, (size_t) total_buffered,
-		(int) ((100 * total_buffered) / max_queue), (unsigned int) buffers.size(),
-		(unsigned long long int) read_count, (unsigned long long int) write_count
-	);
+	if(human_readable) {
+		char total_read_s[16], total_buffered_s[16];
+		fprintf(stderr, "\rRead: %s, Buffer: %s %3d%% (%u), Reads: %14llu, Writes: %14llu",
+			humanise_size(total_read, total_read_s, sizeof(total_read_s)),
+			humanise_size(total_buffered, total_buffered_s, sizeof(total_buffered_s)),
+			(int) ((100 * total_buffered) / max_queue), (unsigned int) buffers.size(),
+			(unsigned long long int) read_count, (unsigned long long int) write_count
+		);
+	}
+	else {
+		fprintf(stderr, "\rRead: %14llu, Buffer: %14zu %3d%% (%u), Reads: %14llu, Writes: %14llu",
+			(unsigned long long int) total_read, (size_t) total_buffered,
+			(int) ((100 * total_buffered) / max_queue), (unsigned int) buffers.size(),
+			(unsigned long long int) read_count, (unsigned long long int) write_count
+		);
+	}
 }
 
 int main(int argc, char **argv) {
 	int n = 0;
 	while (n >= 0) {
-		n = getopt_long(argc, argv, "m:r:phV", options, NULL);
+		n = getopt_long(argc, argv, "m:r:pshV", options, NULL);
 		if (n < 0) continue;
 		switch (n) {
 		case 'm': {
@@ -256,6 +303,9 @@ int main(int argc, char **argv) {
 		}
 		case 'p':
 			show_progress = true;
+			break;
+		case 's':
+			human_readable = true;
 			break;
 		case 'V':
 			fprintf(stdout, "%s\n\n%s\n", version_string, authors);
