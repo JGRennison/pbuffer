@@ -1,0 +1,15 @@
+Source: pbuffer
+Maintainer: Jonathan G Rennison <j.g.rennison@gmail.com>
+Section: utils
+Priority: optional
+Standards-Version: 3.9.5
+Homepage: https://launchpad.net/~j-g-rennison/+archive/pbuffer
+Vcs-Browser: https://github.com/JGRennison/pbuffer
+Vcs-Git: https://github.com/JGRennison/pbuffer.git
+Build-Depends: debhelper (>= 9), help2man
+
+Package: pbuffer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Pipe buffer
+ Copy STDIN to STDOUT, storing up to a fixed number of bytes.
